@@ -3,31 +3,45 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
-    --foreground-rgb: 255, 255, 255;
-    --background-start-rgb: 0, 0, 0;
-    --background-end-rgb: 0, 0, 0;
-  }
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+}
+/* globals.css */
+
+/* Import GitHub markdown CSS */
+@import "github-markdown-css/github-markdown.css";
+
+/* Custom styles for markdown */
+.markdown-body {
+  background-color: #fff;
+  color: #000;
+}
+
+/* Custom styles for tables */
+.markdown-body table {
+  background-color: #f0f0f0; /* Gray background for tables */
+  overflow-x: auto; /* Make table horizontally scrollable */
+  display: block; /* Ensure the table scrolls */
+  border-collapse: collapse; /* Ensure borders are collapsed */
+  width: 100%;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #ddd; /* Border for table cells */
+  padding: 8px; /* Padding for table cells */
+}
+
+.markdown-body thead {
+  background-color: #e0e0e0; /* Background color for table headers */
 }

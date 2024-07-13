@@ -1,113 +1,224 @@
-import Image from "next/image";
+"use client";
+
+import { useState, useRef } from "react";
+import {
+  extractTextFromPDF,
+  preprocessText,
+  handleUserQuery,
+  getVectorRepresentation,
+} from "../utils/helper";
+import SkeletonLoader from "../components/SkeletonLoader";
+import MarkdownViewer from "../components/MarkdownViewer";
+import Accordion from "../components/Accordion";
+import "../app/globals.css";
 
 export default function Home() {
+  const [file, setFile] = useState(null);
+  const [fileUrl, setFileUrl] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [pdfText, setPdfText] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
+  const [pdfTextEmbedding, setPdfTextEmbedding] = useState(null);
+  const [userQueryEmbedding, setUserQueryEmbedding] = useState(null);
+  const [prompt, setPrompt] = useState("");
+  const [topChunks, setTopChunks] = useState([]);
+  const [showFullText, setShowFullText] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleFileChange = async (e) => {
+    const selectedFile = e.target.files[0];
+    if (selectedFile && selectedFile.type === "application/pdf") {
+      setFile(selectedFile);
+      setFileUrl(URL.createObjectURL(selectedFile));
+      const text = await extractTextFromPDF(selectedFile);
+      setPdfText(preprocessText(text));
+      const pdfEmbedding = await getVectorRepresentation(preprocessText(text));
+      setPdfTextEmbedding(pdfEmbedding);
+    }
+  };
+
+  const handleInputChange = (e) => {
+    setInput(e.target.value);
+  };
+
+  const handleChatSubmit = async (e) => {
+    e.preventDefault();
+    if (!input || !pdfText) return;
+
+    const userMessage = { user: input };
+    setMessages((prevMessages) => [...prevMessages, userMessage]);
+    setInput("");
+    setRefreshing(true);
+
+    const userQueryEmb = await getVectorRepresentation(input);
+    setUserQueryEmbedding(userQueryEmb);
+
+    const result = await handleUserQuery(input, [pdfText], []);
+    const botMessage = { bot: result.response };
+    setMessages((prevMessages) => [...prevMessages, botMessage]);
+    setRefreshing(false);
+
+    const combinedPrompt = `We have processed several papers. The following are the contents of the most relevant ones:\n\n${pdfText}\n\n${input}`;
+    setPrompt(result.prompt);
+
+    // Refresh debug information
+    setPdfText(pdfText);
+    setPdfTextEmbedding(pdfTextEmbedding);
+    setUserQueryEmbedding(userQueryEmb);
+    setPrompt(result.prompt);
+    setTopChunks(result.topChunks);
+  };
+
+  const handleClick = () => {
+    fileInputRef.current.click();
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-between p-24">
-      <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm lg:flex">
-        <p className="fixed left-0 top-0 flex w-full justify-center border-b border-gray-300 bg-gradient-to-b from-zinc-200 pb-6 pt-8 backdrop-blur-2xl dark:border-neutral-800 dark:bg-zinc-800/30 dark:from-inherit lg:static lg:w-auto  lg:rounded-xl lg:border lg:bg-gray-200 lg:p-4 lg:dark:bg-zinc-800/30">
-          Get started by editing&nbsp;
-          <code className="font-mono font-bold">src/app/page.js</code>
-        </p>
-        <div className="fixed bottom-0 left-0 flex h-48 w-full items-end justify-center bg-gradient-to-t from-white via-white dark:from-black dark:via-black lg:static lg:h-auto lg:w-auto lg:bg-none">
-          <a
-            className="pointer-events-none flex place-items-center gap-2 p-8 lg:pointer-events-auto lg:p-0"
-            href="https://vercel.com?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <div className="min-h-screen p-6">
+      <div className="bg-white p-4 rounded-lg">
+        <h1 className="text-2xl font-bold mb-4">Chat with your PDF</h1>
+
+        <div className="mb-4">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="application/pdf"
+            className="hidden"
+          />
+          <div
+            onClick={handleClick}
+            className="border-2 border-dotted border-gray-400 text-gray-700 p-4 rounded cursor-pointer text-center"
           >
-            By{" "}
-            <Image
-              src="/vercel.svg"
-              alt="Vercel Logo"
-              className="dark:invert"
-              width={100}
-              height={24}
-              priority
-            />
-          </a>
+            Upload PDF
+          </div>
+        </div>
+
+        <div className="flex gap-4 w-full h-[700px]">
+          {fileUrl && (
+            <div className="mb-4 flex-grow overflow-auto">
+              <h2 className="text-lg font-semibold mb-2">PDF Preview:</h2>
+              <iframe
+                src={fileUrl}
+                style={{ width: "100%", height: "100%" }}
+                className="w-full h-full border"
+                title="PDF Preview"
+              ></iframe>
+            </div>
+          )}
+
+          {fileUrl && (
+            <div className="w-1/2 h-[700px] overflow-y-scroll">
+              <div className="flex-grow mb-4 p-4 shadow-md rounded">
+                {messages.length === 0 && (
+                  <div>
+                    <p className="text-center text-lg font-bold">
+                      Ask me anything about the PDF
+                    </p>
+                  </div>
+                )}
+                {messages.map((message, index) => (
+                  <div
+                    key={index}
+                    className={`flex ${
+                      message.user ? "justify-end" : "justify-start"
+                    } mb-2`}
+                  >
+                    <div
+                      className={`p-2 rounded-lg  ${
+                        message.user
+                          ? "bg-blue-500 text-white max-w-xs"
+                          : "w-full"
+                      }`}
+                    >
+                      {message.user ? (
+                        message.user
+                      ) : (
+                        <MarkdownViewer content={message.bot} />
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {refreshing && <SkeletonLoader count={4} height={0.5} />}
+              </div>
+
+              <form onSubmit={handleChatSubmit} className="flex items-center">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={handleInputChange}
+                  className="flex-grow p-2 border border-gray-300 rounded-l"
+                  placeholder="Ask a question..."
+                />
+                <button
+                  type="submit"
+                  className="bg-blue-500 text-white px-4 py-2 rounded-r"
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="relative flex place-items-center before:absolute before:h-[300px] before:w-full sm:before:w-[480px] before:-translate-x-1/2 before:rounded-full before:bg-gradient-radial before:from-white before:to-transparent before:blur-2xl before:content-[''] after:absolute after:-z-20 after:h-[180px] after:w-full sm:after:w-[240px] after:translate-x-1/3 after:bg-gradient-conic after:from-sky-200 after:via-blue-200 after:blur-2xl after:content-[''] before:dark:bg-gradient-to-br before:dark:from-transparent before:dark:to-blue-700 before:dark:opacity-10 after:dark:from-sky-900 after:dark:via-[#0141ff] after:dark:opacity-40 before:lg:h-[360px] z-[-1]">
-        <Image
-          className="relative dark:drop-shadow-[0_0_0.3rem_#ffffff70] dark:invert"
-          src="/next.svg"
-          alt="Next.js Logo"
-          width={180}
-          height={37}
-          priority
-        />
+      <div className="bg-gray-100 p-4 rounded-lg mt-4">
+        <h2 className="text-xl font-bold mb-2">Debug Information</h2>
+        <Accordion title="Extracted Text">
+          <p>Text Length: {pdfText.length}</p>
+          <pre
+            className="bg-gray-200 p-2 rounded whitespace-pre-wrap"
+            style={{ whiteSpace: "pre-wrap" }}
+          >
+            {showFullText ? pdfText : `${pdfText.slice(0, 500)}...`}
+            {pdfText.length > 500 && (
+              <button
+                className="text-blue-500 ml-2"
+                onClick={() => setShowFullText(!showFullText)}
+              >
+                {showFullText ? "Show Less" : "Show More"}
+              </button>
+            )}
+          </pre>
+        </Accordion>
+
+        <Accordion title="PDF Text Embedding">
+          <pre className="bg-gray-200 p-2 rounded whitespace-pre-wrap">
+            {JSON.stringify(pdfTextEmbedding, null, 2)}
+          </pre>
+        </Accordion>
+
+        <Accordion title="User Query">
+          <pre className="bg-gray-200 p-2 rounded whitespace-pre-wrap">
+            {messages[messages?.length - 2]?.user || ""}
+          </pre>
+        </Accordion>
+
+        <Accordion title="User Query Embedding">
+          <pre className="bg-gray-200 p-2 rounded whitespace-pre-wrap">
+            {JSON.stringify(userQueryEmbedding, null, 2)}
+          </pre>
+        </Accordion>
+
+        <Accordion title="Top Similar Chunks">
+          <pre className="bg-gray-200 p-2 rounded whitespace-pre-wrap">
+            {topChunks.map((chunk, index) => (
+              <div key={index}>
+                <h3>Chunk {index + 1}</h3>
+                <p>{chunk}</p>
+              </div>
+            ))}
+          </pre>
+        </Accordion>
+
+        <Accordion title="Prompt">
+          <p>Prompt Length: {prompt.length}</p>
+          <pre className="bg-gray-200 p-2 rounded whitespace-pre-wrap">
+            {prompt}
+          </pre>
+        </Accordion>
       </div>
-
-      <div className="mb-32 grid text-center lg:max-w-5xl lg:w-full lg:mb-0 lg:grid-cols-4 lg:text-left">
-        <a
-          href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Docs{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Find in-depth information about Next.js features and API.
-          </p>
-        </a>
-
-        <a
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800 hover:dark:bg-opacity-30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Learn{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Learn about Next.js in an interactive course with&nbsp;quizzes!
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Templates{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50`}>
-            Explore starter templates for Next.js.
-          </p>
-        </a>
-
-        <a
-          href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-          className="group rounded-lg border border-transparent px-5 py-4 transition-colors hover:border-gray-300 hover:bg-gray-100 hover:dark:border-neutral-700 hover:dark:bg-neutral-800/30"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <h2 className={`mb-3 text-2xl font-semibold`}>
-            Deploy{" "}
-            <span className="inline-block transition-transform group-hover:translate-x-1 motion-reduce:transform-none">
-              -&gt;
-            </span>
-          </h2>
-          <p className={`m-0 max-w-[30ch] text-sm opacity-50 text-balance`}>
-            Instantly deploy your Next.js site to a shareable URL with Vercel.
-          </p>
-        </a>
-      </div>
-    </main>
+    </div>
   );
 }
